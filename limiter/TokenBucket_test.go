@@ -13,7 +13,7 @@ func TestTokenBucket(t *testing.T) {
 	t.Run("Token Bucket algorithm", func(t *testing.T) {
 		mockClock := NewMockClock(time.Now())
 		tokenBucket := NewTokenBucket(1, 10,
-			NewInMemoryStore(),
+			NewTokenBucketInMemoryStore(),
 			mockClock)
 
 		ctx := context.Background()
