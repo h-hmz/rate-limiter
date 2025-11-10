@@ -1,4 +1,4 @@
-module github.com/h-hmz/rate-limiter/v2
+module github.com/h-hmz/rate-limiter
 
 go 1.23.1
 

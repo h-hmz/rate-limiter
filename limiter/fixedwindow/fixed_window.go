@@ -1,25 +1,30 @@
-package limiter
+package fixedwindow
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"github.com/h-hmz/rate-limiter/limiter"
 )
 
-type FixedWindowState struct {
+var ErrNotFound = errors.New("key not found in storage")
+
+type State struct {
 	remainingTokens int64
 	lastWindowID    int64
 }
 
-type FixedWindow struct {
-	store           FixedWindowStore
-	clock           Clock
+type Limiter struct {
+	store           Store
+	clock           limiter.Clock
 	TokensPerWindow int64
 	WindowStart     time.Time
 	WindowDuration  time.Duration
 }
 
-func NewFixedWindow(tokensPerWindow int64, windowDuration time.Duration, store FixedWindowStore, clock Clock) FixedWindow {
-	return FixedWindow{
+func New(tokensPerWindow int64, windowDuration time.Duration, store Store, clock limiter.Clock) Limiter {
+	return Limiter{
 		store:           store,
 		clock:           clock,
 		TokensPerWindow: tokensPerWindow,
@@ -27,7 +32,7 @@ func NewFixedWindow(tokensPerWindow int64, windowDuration time.Duration, store F
 	}
 }
 
-func (r *FixedWindow) Allow(ctx context.Context, key string) bool {
+func (r *Limiter) Allow(ctx context.Context, key string) bool {
 
 	currentTimeNano := r.clock.Now().UnixNano()
 	currentWindowID := currentTimeNano / r.WindowDuration.Nanoseconds()
@@ -35,7 +40,7 @@ func (r *FixedWindow) Allow(ctx context.Context, key string) bool {
 	state, err := r.store.Get(ctx, key)
 	if err != nil {
 		if err == ErrNotFound {
-			val := FixedWindowState{remainingTokens: r.TokensPerWindow, lastWindowID: currentWindowID}
+			val := State{remainingTokens: r.TokensPerWindow, lastWindowID: currentWindowID}
 			state = val
 		} else {
 			return false

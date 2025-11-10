@@ -1,4 +1,4 @@
-package limiter
+package tokenbucket
 
 import (
 	"context"
@@ -6,14 +6,16 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/h-hmz/rate-limiter/limiter"
 )
 
 func TestTokenBucket(t *testing.T) {
 
 	t.Run("Token Bucket algorithm", func(t *testing.T) {
-		mockClock := NewMockClock(time.Now())
-		tokenBucket := NewTokenBucket(1, 10,
-			NewTokenBucketInMemoryStore(),
+		mockClock := limiter.NewMockClock(time.Now())
+		tokenBucket := New(1, 10,
+			NewInMemoryStore(),
 			mockClock)
 
 		ctx := context.Background()

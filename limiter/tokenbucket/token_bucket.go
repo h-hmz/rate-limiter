@@ -1,27 +1,29 @@
-package limiter
+package tokenbucket
 
 import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/h-hmz/rate-limiter/limiter"
 )
 
 var ErrNotFound = errors.New("key not found in storage")
 
-type TokenBucketState struct {
+type State struct {
 	Tokens     int64
 	LastRefill time.Time
 }
 
-type TokenBucket struct {
-	store TokenBucketStore
-	clock Clock
+type Limiter struct {
+	store Store
+	clock limiter.Clock
 	rate  float64 //tokens refill rate per second
 	burst int64
 }
 
-func NewTokenBucket(rate float64, burst int64, store TokenBucketStore, clock Clock) *TokenBucket {
-	return &TokenBucket{
+func New(rate float64, burst int64, store Store, clock limiter.Clock) *Limiter {
+	return &Limiter{
 		store: store,
 		clock: clock,
 		rate:  rate,
@@ -29,11 +31,11 @@ func NewTokenBucket(rate float64, burst int64, store TokenBucketStore, clock Clo
 	}
 }
 
-func (r *TokenBucket) Allow(ctx context.Context, key string) bool {
+func (r *Limiter) Allow(ctx context.Context, key string) bool {
 	userQuota, err := r.store.Get(ctx, key)
 	if err != nil {
 		if err == ErrNotFound {
-			val := TokenBucketState{Tokens: r.burst, LastRefill: r.clock.Now()}
+			val := State{Tokens: r.burst, LastRefill: r.clock.Now()}
 			userQuota = val
 		} else {
 			return false
