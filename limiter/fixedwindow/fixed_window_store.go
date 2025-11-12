@@ -3,6 +3,7 @@ package fixedwindow
 import (
 	"context"
 
+	"github.com/h-hmz/rate-limiter/limiter/internal/shardedmap"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -12,17 +13,17 @@ type Store interface {
 }
 
 type InMemoryStore struct {
-	usersMap map[string]State
+	data shardedmap.ShardedMap[State]
 }
 
 func NewInMemory() InMemoryStore {
 	return InMemoryStore{
-		usersMap: make(map[string]State),
+		data: shardedmap.NewShardedMap[State](256),
 	}
 }
 
 func (r *InMemoryStore) Get(ctx context.Context, key string) (State, error) {
-	val, ok := r.usersMap[key]
+	val, ok := r.data.Get(key)
 
 	if !ok {
 		return State{}, ErrNotFound
@@ -31,7 +32,7 @@ func (r *InMemoryStore) Get(ctx context.Context, key string) (State, error) {
 }
 
 func (r *InMemoryStore) Set(ctx context.Context, key string, val State) error {
-	r.usersMap[key] = val
+	r.data.Set(key, val)
 	return nil
 }
 

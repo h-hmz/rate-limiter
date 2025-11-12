@@ -11,7 +11,6 @@ import (
 )
 
 func TestTokenBucket(t *testing.T) {
-
 	t.Run("Token Bucket algorithm", func(t *testing.T) {
 		mockClock := limiter.NewMockClock(time.Now())
 		tokenBucket := New(1, 10,

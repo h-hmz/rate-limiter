@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/h-hmz/rate-limiter/limiter/internal/shardedmap"
 )
 
 type Store interface {
@@ -12,26 +14,26 @@ type Store interface {
 }
 
 type InMemoryStore struct {
-	usersMap map[string]State
+	data shardedmap.ShardedMap[State]
 }
 
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
-		usersMap: make(map[string]State),
+		data: shardedmap.NewShardedMap[State](256),
 	}
 }
 
 func (r *InMemoryStore) Get(ctx context.Context, key string) (State, error) {
-	data, exists := r.usersMap[key]
-	if !exists {
+	val, ok := r.data.Get(key)
+	if !ok {
 		return State{}, ErrNotFound
 	}
 
-	return data, nil
+	return val, nil
 }
 
 func (r *InMemoryStore) Set(ctx context.Context, key string, val State) error {
-	r.usersMap[key] = val
+	r.data.Set(key, val)
 	return nil
 }
 
