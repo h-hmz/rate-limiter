@@ -45,3 +45,16 @@ func (sm ShardedMap[T]) Set(key string, value T) {
 
 	shard.m[key] = value
 }
+
+func (sm ShardedMap[T]) WithShard(key string, init func() T, fn func(T) (T, bool)) (T, bool) {
+	shard := sm.getShard(key)
+	shard.Lock()
+	defer shard.Unlock()
+
+	val, ok := shard.m[key]
+	if !ok {
+		val = init()
+	}
+	shard.m[key], ok = fn(val)
+	return shard.m[key], ok
+}

@@ -8,32 +8,29 @@ import (
 )
 
 type Store interface {
-	Get(ctx context.Context, key string) (State, error)
-	Set(ctx context.Context, key string, val State) error
+	AtomicUpdate(
+		ctx context.Context,
+		key string,
+		init func() State,
+		fn func(State) (State, bool),
+	) (State, bool)
 }
 
 type InMemoryStore struct {
 	data shardedmap.ShardedMap[State]
 }
 
-func NewInMemory() InMemoryStore {
+var _ Store = (*InMemoryStore)(nil)
+
+func NewInMemoryStore() InMemoryStore {
 	return InMemoryStore{
 		data: shardedmap.NewShardedMap[State](256),
 	}
 }
 
-func (r *InMemoryStore) Get(ctx context.Context, key string) (State, error) {
-	val, ok := r.data.Get(key)
-
-	if !ok {
-		return State{}, ErrNotFound
-	}
-	return val, nil
-}
-
-func (r *InMemoryStore) Set(ctx context.Context, key string, val State) error {
-	r.data.Set(key, val)
-	return nil
+func (r *InMemoryStore) AtomicUpdate(ctx context.Context, key string, init func() State, fn func(State) (State, bool)) (State, bool) {
+	val, ok := r.data.WithShard(key, init, fn)
+	return val, ok
 }
 
 type RedisStore struct {

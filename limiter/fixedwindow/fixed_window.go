@@ -33,36 +33,27 @@ func New(tokensPerWindow int64, windowDuration time.Duration, store Store, clock
 }
 
 func (r *Limiter) Allow(ctx context.Context, key string) bool {
-
 	currentTimeNano := r.clock.Now().UnixNano()
 	currentWindowID := currentTimeNano / r.WindowDuration.Nanoseconds()
 
-	state, err := r.store.Get(ctx, key)
-	if err != nil {
-		if err == ErrNotFound {
-			val := State{remainingTokens: r.TokensPerWindow, lastWindowID: currentWindowID}
-			state = val
-		} else {
-			return false
-		}
-	}
+	_, isAllowed := r.store.AtomicUpdate(ctx, key,
+		func() State { //initialization state in case of a new user
+			return State{remainingTokens: r.TokensPerWindow, lastWindowID: currentWindowID}
+		},
+		func(userQuota State) (State, bool) {
 
-	if state.lastWindowID < currentWindowID {
-		state.lastWindowID = currentWindowID
-		state.remainingTokens = r.TokensPerWindow
-	}
+			if userQuota.lastWindowID < currentWindowID {
+				userQuota.lastWindowID = currentWindowID
+				userQuota.remainingTokens = r.TokensPerWindow
+			}
 
-	if state.remainingTokens > 0 {
-		state.remainingTokens--
-		err = r.store.Set(ctx, key, state)
-		if err != nil {
-			return false
-		}
-		return true
-	}
-	err = r.store.Set(ctx, key, state)
-	if err != nil {
-		return false
-	}
-	return false
+			if userQuota.remainingTokens > 0 {
+				userQuota.remainingTokens--
+				return userQuota, true
+			}
+
+			return userQuota, false
+		})
+
+	return isAllowed
 }

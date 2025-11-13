@@ -32,29 +32,26 @@ func New(rate float64, burst int64, store Store, clock limiter.Clock) *Limiter {
 }
 
 func (r *Limiter) Allow(ctx context.Context, key string) bool {
-	userQuota, err := r.store.Get(ctx, key)
-	if err != nil {
-		if err == ErrNotFound {
-			val := State{Tokens: r.burst, LastRefill: r.clock.Now()}
-			userQuota = val
-		} else {
-			return false
-		}
-	}
+	_, isAllowed := r.store.AtomicUpdate(ctx, key,
+		func() State { //initialization state in case of a new user
+			return State{Tokens: r.burst, LastRefill: r.clock.Now()}
+		},
+		func(userQuota State) (State, bool) {
 
-	userQuota.Tokens += int64(float64(r.clock.Now().Sub(userQuota.LastRefill).Seconds() * r.rate))
-	userQuota.LastRefill = r.clock.Now()
+			userQuota.Tokens += int64(float64(r.clock.Now().Sub(userQuota.LastRefill).Seconds() * r.rate))
+			userQuota.LastRefill = r.clock.Now()
 
-	if userQuota.Tokens > r.burst {
-		userQuota.Tokens = r.burst
-	}
+			if userQuota.Tokens > r.burst {
+				userQuota.Tokens = r.burst
+			}
 
-	if userQuota.Tokens > 0 {
-		userQuota.Tokens--
-		r.store.Set(ctx, key, userQuota)
-		return true
-	}
+			if userQuota.Tokens > 0 {
+				userQuota.Tokens--
+				return userQuota, true
+			}
 
-	r.store.Set(ctx, key, userQuota)
-	return false
+			return userQuota, false
+		})
+
+	return isAllowed
 }
