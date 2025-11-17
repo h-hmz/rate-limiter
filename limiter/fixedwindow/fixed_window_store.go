@@ -54,7 +54,7 @@ func (r *RedisStore) Get(ctx context.Context, key string) (State, error) {
 		return State{}, err
 	}
 
-	if val.lastWindowID == 0 {
+	if val.LastWindowID == 0 {
 		return State{}, ErrNotFound
 	}
 

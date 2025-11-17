@@ -11,8 +11,8 @@ import (
 var ErrNotFound = errors.New("key not found in storage")
 
 type State struct {
-	Tokens     int64
-	LastRefill time.Time
+	Tokens     int64     `redis:"tokens"` //Note: Redis tags are leaking domain knowledge?
+	LastRefill time.Time `redis:"last_refill"`
 }
 
 type Limiter struct {
@@ -31,8 +31,8 @@ func New(rate float64, burst int64, store Store, clock limiter.Clock) *Limiter {
 	}
 }
 
-func (r *Limiter) Allow(ctx context.Context, key string) bool {
-	_, isAllowed := r.store.AtomicUpdate(ctx, key,
+func (r *Limiter) Allow(ctx context.Context, key string) (bool, error) {
+	_, isAllowed, err := r.store.AtomicUpdate(ctx, key,
 		func() State { //initialization state in case of a new user
 			return State{Tokens: r.burst, LastRefill: r.clock.Now()}
 		},
@@ -53,5 +53,9 @@ func (r *Limiter) Allow(ctx context.Context, key string) bool {
 			return userQuota, false
 		})
 
-	return isAllowed
+	if err != nil {
+		return false, err
+	}
+
+	return isAllowed, nil
 }

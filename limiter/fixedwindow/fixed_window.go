@@ -11,8 +11,8 @@ import (
 var ErrNotFound = errors.New("key not found in storage")
 
 type State struct {
-	remainingTokens int64
-	lastWindowID    int64
+	RemainingTokens int64 `redis:"remaining_tokens"`
+	LastWindowID    int64 `redis:"last_window_id"`
 }
 
 type Limiter struct {
@@ -38,17 +38,17 @@ func (r *Limiter) Allow(ctx context.Context, key string) bool {
 
 	_, isAllowed := r.store.AtomicUpdate(ctx, key,
 		func() State { //initialization state in case of a new user
-			return State{remainingTokens: r.TokensPerWindow, lastWindowID: currentWindowID}
+			return State{RemainingTokens: r.TokensPerWindow, LastWindowID: currentWindowID}
 		},
 		func(userQuota State) (State, bool) {
 
-			if userQuota.lastWindowID < currentWindowID {
-				userQuota.lastWindowID = currentWindowID
-				userQuota.remainingTokens = r.TokensPerWindow
+			if userQuota.LastWindowID < currentWindowID {
+				userQuota.LastWindowID = currentWindowID
+				userQuota.LastWindowID = r.TokensPerWindow
 			}
 
-			if userQuota.remainingTokens > 0 {
-				userQuota.remainingTokens--
+			if userQuota.RemainingTokens > 0 {
+				userQuota.RemainingTokens--
 				return userQuota, true
 			}
 
