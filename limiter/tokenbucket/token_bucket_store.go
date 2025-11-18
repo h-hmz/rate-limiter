@@ -87,7 +87,7 @@ func (r *RedisStore) AtomicUpdate(ctx context.Context, key string, init func() S
 	}
 
 	// Retry if the key has been changed.
-	maxRetries := 10
+	maxRetries := 100
 	for range maxRetries {
 		err := r.rdb.Watch(ctx, txf, key)
 		if err == nil {

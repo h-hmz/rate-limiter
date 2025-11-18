@@ -15,6 +15,10 @@ import (
 )
 
 func TestTokenBucket_WithStores(t *testing.T) {
+	t.Run("InMemory", func(t *testing.T) {
+		inMemoryStoreFactory := func() Store { return NewInMemoryStore() }
+		runTokenBucketTestSuite(t, inMemoryStoreFactory)
+	})
 
 	t.Run("Redis", func(t *testing.T) {
 		redisStoreFactory := func() Store {
@@ -23,12 +27,6 @@ func TestTokenBucket_WithStores(t *testing.T) {
 		}
 		runTokenBucketTestSuite(t, redisStoreFactory)
 	})
-
-	t.Run("InMemory", func(t *testing.T) {
-		inMemoryStoreFactory := func() Store { return NewInMemoryStore() }
-		runTokenBucketTestSuite(t, inMemoryStoreFactory)
-	})
-
 }
 
 func runTokenBucketTestSuite(t *testing.T, storeFactory func() Store) {
@@ -37,7 +35,8 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func() Store) {
 	t.Run("Basic Refill and Burst Logic", func(t *testing.T) {
 		// 1. Setup
 		// Rate: 1 token/sec, Burst: 10 tokens
-		clock := limiter.NewMockClock(time.Now())
+		start := time.Unix(int64(time.Minute), 0) // Jan 1, 1970, 00:01:00 UTC
+		clock := limiter.NewMockClock(start)
 		burst := int64(10)
 		rate := float64(1)
 		limiterInstance := New(rate, burst, storeFactory(), clock)
