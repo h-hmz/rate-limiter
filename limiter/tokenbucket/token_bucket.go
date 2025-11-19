@@ -15,6 +15,14 @@ type State struct {
 	LastRefill time.Time `redis:"last_refill"`
 }
 
+func (s *State) isInitialized() bool {
+
+	if s.LastRefill.IsZero() && s.Tokens == 0 {
+		return false
+	}
+	return true
+}
+
 type Limiter struct {
 	store Store
 	clock limiter.Clock

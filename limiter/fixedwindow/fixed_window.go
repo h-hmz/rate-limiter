@@ -15,6 +15,14 @@ type State struct {
 	LastWindowID    int64 `redis:"last_window_id"`
 }
 
+func (s *State) isInitialized() bool {
+
+	if s.LastWindowID == 0 && s.RemainingTokens == 0 {
+		return false
+	}
+	return true
+}
+
 type Limiter struct {
 	store           Store
 	clock           limiter.Clock

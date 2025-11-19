@@ -43,3 +43,7 @@ Don't ask "What interface do I need?"
 Ask: "Who owns this concept?"
 
 Abstractions become obvious when ownership is clear.
+
+# Lua Scripts vs Redis Transactions (EXEC/WATCH/MULTI)
+
+Considering that we are rate limiting on a per-user basis, low contention is expected so optimistic locking through Redis transactions is OK.

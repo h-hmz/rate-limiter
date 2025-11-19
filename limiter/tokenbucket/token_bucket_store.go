@@ -65,7 +65,7 @@ func (r *RedisStore) AtomicUpdate(ctx context.Context, key string, init func() S
 		}
 
 		// HGetAll returns empty struct if key is missing.
-		if currentState.LastRefill.IsZero() { //NOTE: Leaking domain knowledge?
+		if !currentState.isInitialized() {
 			currentState = init()
 		}
 
