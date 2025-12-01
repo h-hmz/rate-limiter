@@ -3,6 +3,7 @@ package fixedwindow
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/h-hmz/rate-limiter/limiter/internal/shardedmap"
 	"github.com/redis/go-redis/v9"
@@ -12,6 +13,7 @@ type Store interface {
 	AtomicUpdate(
 		ctx context.Context,
 		key string,
+		ttl time.Duration,
 		init func() State,
 		fn func(State) (State, bool),
 	) (State, bool, error)
@@ -29,7 +31,7 @@ func NewInMemoryStore() *InMemoryStore {
 	}
 }
 
-func (r *InMemoryStore) AtomicUpdate(ctx context.Context, key string, init func() State, fn func(State) (State, bool)) (State, bool, error) {
+func (r *InMemoryStore) AtomicUpdate(ctx context.Context, key string, ttl time.Duration, init func() State, fn func(State) (State, bool)) (State, bool, error) {
 	val, ok := r.data.WithShard(key, init, fn)
 	return val, ok, nil
 }
@@ -48,7 +50,7 @@ func NewRedisStore(redisAddr string) *RedisStore {
 	}
 }
 
-func (r *RedisStore) AtomicUpdate(ctx context.Context, key string, init func() State, fn func(State) (State, bool)) (State, bool, error) {
+func (r *RedisStore) AtomicUpdate(ctx context.Context, key string, ttl time.Duration, init func() State, fn func(State) (State, bool)) (State, bool, error) {
 
 	var finalAllowed bool
 	var finalState State
@@ -74,6 +76,9 @@ func (r *RedisStore) AtomicUpdate(ctx context.Context, key string, init func() S
 		// Operation is commited only if the watched keys remain unchanged.
 		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			pipe.HSet(ctx, key, newState)
+			if ttl > 0 {
+				pipe.Expire(ctx, key, ttl)
+			}
 			return nil
 		})
 

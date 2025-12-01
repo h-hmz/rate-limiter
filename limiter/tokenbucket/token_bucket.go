@@ -28,19 +28,28 @@ type Limiter struct {
 	clock limiter.Clock
 	rate  float64 //tokens refill rate per second
 	burst int64
+	ttl   time.Duration
 }
 
 func New(rate float64, burst int64, store Store, clock limiter.Clock) *Limiter {
+	var ttl time.Duration
+	if rate > 0 {
+		secondsToFull := float64(burst) / rate
+		ttl = time.Duration(secondsToFull * float64(time.Second))
+	}
+
 	return &Limiter{
 		store: store,
 		clock: clock,
 		rate:  rate,
 		burst: burst,
+		ttl:   ttl,
 	}
 }
 
 func (r *Limiter) Allow(ctx context.Context, key string) (bool, error) {
-	_, isAllowed, err := r.store.AtomicUpdate(ctx, key,
+
+	_, isAllowed, err := r.store.AtomicUpdate(ctx, key, r.ttl,
 		func() State { //initialization state in case of a new user
 			return State{Tokens: r.burst, LastRefill: r.clock.Now()}
 		},
