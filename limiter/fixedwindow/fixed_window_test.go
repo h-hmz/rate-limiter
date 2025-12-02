@@ -17,19 +17,19 @@ import (
 
 func TestFixedWindow_WithStores(t *testing.T) {
 	t.Run("InMemory", func(t *testing.T) {
-		inMemoryStoreFactory := func() Store { return NewInMemoryStore() }
+		inMemoryStoreFactory := func(clock limiter.Clock) Store { return NewInMemoryStore(clock) }
 		runFixedWindowTestSuite(t, inMemoryStoreFactory)
 	})
 
 	t.Run("Redis", func(t *testing.T) {
-		redisStoreFactory := func() Store {
+		redisStoreFactory := func(_ limiter.Clock) Store {
 			redis := miniredis.RunT(t)
 			return NewRedisStore(redis.Addr())
 		}
 		runFixedWindowTestSuite(t, redisStoreFactory)
 	})
 }
-func runFixedWindowTestSuite(t *testing.T, storeFactory func() Store) {
+func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock) Store) {
 	t.Helper()
 
 	t.Run("Basic Limits and Window Reset", func(t *testing.T) {
@@ -39,7 +39,7 @@ func runFixedWindowTestSuite(t *testing.T, storeFactory func() Store) {
 		limit := int64(3)
 		windowDuration := time.Minute
 
-		limiterInstance := New(limit, windowDuration, storeFactory(), clock)
+		limiterInstance := New(limit, windowDuration, storeFactory(clock), clock)
 
 		ctx := context.Background()
 		key := "recoome"
@@ -73,7 +73,7 @@ func runFixedWindowTestSuite(t *testing.T, storeFactory func() Store) {
 		clock := &limiter.WallClock{} // Use real clock for goroutine scheduling
 
 		limit := int64(10)
-		limiterInstance := New(limit, time.Minute, storeFactory(), clock)
+		limiterInstance := New(limit, time.Minute, storeFactory(clock), clock)
 
 		ctx := context.Background()
 		key := "jeice"
@@ -136,5 +136,37 @@ func TestFixedWindowTTL_Redis(t *testing.T) {
 
 	exists, _ = redisClient.Exists(ctx, key).Result()
 	assert.Equal(t, int64(0), exists, "Key should be evicted after 61s")
+}
 
+func TestFixedWindowTTL_InMemoryGC(t *testing.T) {
+
+	// Setup
+	start := time.Now()
+	clock := limiter.NewMockClock(start)
+	store := NewInMemoryStore(clock)
+
+	l := New(1, time.Minute, store, clock) // ttl = WindowDuration = 60s
+
+	ctx := context.Background()
+	key := "android17"
+
+	// Trigger key creation
+	_, err := l.Allow(ctx, key)
+	require.NoError(t, err)
+
+	entry, exists := store.data.Get(key)
+	assert.True(t, exists, "Key should exist immediately")
+	assert.True(t, entry.expiresAt.After(clock.Now()), "expiresAt should be set")
+
+	clock.Advance(59 * time.Second) //Fastforward time in Mock Clock
+
+	store.DeleteExpiredKeys()
+	entry, exists = store.data.Get(key)
+	assert.True(t, exists, "Key should exist after 59s")
+
+	clock.Advance(2 * time.Second) //Fastforward time in Mock Clock
+
+	store.DeleteExpiredKeys()
+	entry, exists = store.data.Get(key)
+	assert.False(t, exists, "Key should be evicted by GC after 61s")
 }

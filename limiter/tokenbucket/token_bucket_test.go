@@ -17,12 +17,12 @@ import (
 
 func TestTokenBucket_WithStores(t *testing.T) {
 	t.Run("InMemory", func(t *testing.T) {
-		inMemoryStoreFactory := func() Store { return NewInMemoryStore() }
+		inMemoryStoreFactory := func(clock limiter.Clock) Store { return NewInMemoryStore(clock) }
 		runTokenBucketTestSuite(t, inMemoryStoreFactory)
 	})
 
 	t.Run("Redis", func(t *testing.T) {
-		redisStoreFactory := func() Store {
+		redisStoreFactory := func(_ limiter.Clock) Store {
 			redis := miniredis.RunT(t)
 			return NewRedisStore(redis.Addr())
 		}
@@ -30,7 +30,7 @@ func TestTokenBucket_WithStores(t *testing.T) {
 	})
 }
 
-func runTokenBucketTestSuite(t *testing.T, storeFactory func() Store) {
+func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock) Store) {
 	t.Helper()
 
 	t.Run("Basic Refill and Burst Logic", func(t *testing.T) {
@@ -40,7 +40,7 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func() Store) {
 		clock := limiter.NewMockClock(start)
 		burst := int64(10)
 		rate := float64(1)
-		limiterInstance := New(rate, burst, storeFactory(), clock)
+		limiterInstance := New(rate, burst, storeFactory(clock), clock)
 
 		ctx := context.Background()
 		key := "raditz"
@@ -74,7 +74,7 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func() Store) {
 		// This guarantees that exactly ONE request can ever succeed,
 		// regardless of how many goroutines try simultaneously.
 		wallClock := &limiter.WallClock{}
-		limiterInstance := New(0, 1, storeFactory(), wallClock)
+		limiterInstance := New(0, 1, storeFactory(wallClock), wallClock)
 
 		ctx := context.Background()
 		key := "nappa"
@@ -135,5 +135,37 @@ func TestTokenBucketTTL_Redis(t *testing.T) {
 
 	exists, _ = redisClient.Exists(ctx, key).Result()
 	assert.Equal(t, int64(0), exists, "Key should be evicted after 61s")
+}
 
+func TestTokenBucketTTL_InMemoryGC(t *testing.T) {
+
+	// Setup
+	start := time.Now()
+	clock := limiter.NewMockClock(start)
+	store := NewInMemoryStore(clock)
+
+	l := New(1.0, 60, store, clock) // ttl = burst/rate = 60s
+
+	ctx := context.Background()
+	key := "android17"
+
+	// Trigger key creation
+	_, err := l.Allow(ctx, key)
+	require.NoError(t, err)
+
+	entry, exists := store.data.Get(key)
+	assert.True(t, exists, "Key should exist immediately")
+	assert.True(t, entry.expiresAt.After(clock.Now()), "expiresAt should be set")
+
+	clock.Advance(59 * time.Second) //Fastforward time in Mock Clock
+
+	store.DeleteExpiredKeys()
+	entry, exists = store.data.Get(key)
+	assert.True(t, exists, "Key should exist after 59s")
+
+	clock.Advance(2 * time.Second) //Fastforward time in Mock Clock
+
+	store.DeleteExpiredKeys()
+	entry, exists = store.data.Get(key)
+	assert.False(t, exists, "Key should be evicted by GC after 61s")
 }

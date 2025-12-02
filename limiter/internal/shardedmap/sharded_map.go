@@ -58,3 +58,16 @@ func (sm ShardedMap[T]) WithShard(key string, init func() T, fn func(T) (T, bool
 	shard.m[key], ok = fn(val)
 	return shard.m[key], ok
 }
+
+func (sm ShardedMap[T]) RemoveIf(predicate func(val T) bool) {
+
+	for _, shard := range sm {
+		shard.Lock()
+		for k, v := range shard.m {
+			if predicate(v) {
+				delete(shard.m, k)
+			}
+		}
+		shard.Unlock()
+	}
+}
