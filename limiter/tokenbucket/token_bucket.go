@@ -2,20 +2,18 @@ package tokenbucket
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/h-hmz/rate-limiter/limiter"
+	"github.com/h-hmz/rate-limiter/limiter/storage"
 )
-
-var ErrNotFound = errors.New("key not found in storage")
 
 type State struct {
 	Tokens     int64     `redis:"tokens"` //Note: Redis tags are leaking domain knowledge?
 	LastRefill time.Time `redis:"last_refill"`
 }
 
-func (s *State) isInitialized() bool {
+func (s State) IsInitialized() bool {
 
 	if s.LastRefill.IsZero() && s.Tokens == 0 {
 		return false
@@ -24,14 +22,14 @@ func (s *State) isInitialized() bool {
 }
 
 type Limiter struct {
-	store Store
+	store storage.Store[State]
 	clock limiter.Clock
 	rate  float64 //tokens refill rate per second
 	burst int64
 	ttl   time.Duration
 }
 
-func New(rate float64, burst int64, store Store, clock limiter.Clock) *Limiter {
+func New(rate float64, burst int64, store storage.Store[State], clock limiter.Clock) *Limiter {
 	var ttl time.Duration
 	if rate > 0 {
 		secondsToFull := float64(burst) / rate

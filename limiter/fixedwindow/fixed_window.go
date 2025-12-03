@@ -2,20 +2,18 @@ package fixedwindow
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/h-hmz/rate-limiter/limiter"
+	"github.com/h-hmz/rate-limiter/limiter/storage"
 )
-
-var ErrNotFound = errors.New("key not found in storage")
 
 type State struct {
 	RemainingTokens int64 `redis:"remaining_tokens"`
 	LastWindowID    int64 `redis:"last_window_id"`
 }
 
-func (s *State) isInitialized() bool {
+func (s State) IsInitialized() bool {
 
 	if s.LastWindowID == 0 && s.RemainingTokens == 0 {
 		return false
@@ -24,7 +22,7 @@ func (s *State) isInitialized() bool {
 }
 
 type Limiter struct {
-	store           Store
+	store           storage.Store[State]
 	clock           limiter.Clock
 	TokensPerWindow int64
 	WindowStart     time.Time
@@ -32,8 +30,8 @@ type Limiter struct {
 	ttl             time.Duration
 }
 
-func New(tokensPerWindow int64, windowDuration time.Duration, store Store, clock limiter.Clock) Limiter {
-	return Limiter{
+func New(tokensPerWindow int64, windowDuration time.Duration, store storage.Store[State], clock limiter.Clock) *Limiter {
+	return &Limiter{
 		store:           store,
 		clock:           clock,
 		TokensPerWindow: tokensPerWindow,

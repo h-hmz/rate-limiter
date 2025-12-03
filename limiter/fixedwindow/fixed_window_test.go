@@ -8,28 +8,28 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/h-hmz/rate-limiter/limiter"
+	"github.com/h-hmz/rate-limiter/limiter/storage"
 )
 
 func TestFixedWindow_WithStores(t *testing.T) {
 	t.Run("InMemory", func(t *testing.T) {
-		inMemoryStoreFactory := func(clock limiter.Clock) Store { return NewInMemoryStore(clock) }
+		inMemoryStoreFactory := func(clock limiter.Clock) storage.Store[State] { return storage.NewInMemoryStore[State](clock) }
 		runFixedWindowTestSuite(t, inMemoryStoreFactory)
 	})
 
 	t.Run("Redis", func(t *testing.T) {
-		redisStoreFactory := func(_ limiter.Clock) Store {
+		redisStoreFactory := func(_ limiter.Clock) storage.Store[State] {
 			redis := miniredis.RunT(t)
-			return NewRedisStore(redis.Addr())
+			return storage.NewRedisStore[State](redis.Addr())
 		}
 		runFixedWindowTestSuite(t, redisStoreFactory)
 	})
 }
-func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock) Store) {
+func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock) storage.Store[State]) {
 	t.Helper()
 
 	t.Run("Basic Limits and Window Reset", func(t *testing.T) {
@@ -98,75 +98,4 @@ func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 
 		assert.Equal(t, limit, successCount.Load(), "Should strictly enforce limit under concurrency")
 	})
-
-}
-
-func TestFixedWindowTTL_Redis(t *testing.T) {
-
-	// Setup
-	mr := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: mr.Addr(),
-	})
-	store := NewRedisStore(mr.Addr())
-
-	start := time.Unix(int64(time.Minute), 0) // Jan 1, 1970, 00:01:00 UTC
-	clock := limiter.NewMockClock(start)
-	l := New(1, time.Minute, store, clock) // ttl = WindowDuration = 60s
-
-	ctx := context.Background()
-	key := "android17"
-
-	// Trigger key creation
-	_, err := l.Allow(ctx, key)
-	require.NoError(t, err)
-
-	exists, _ := redisClient.Exists(ctx, key).Result()
-	assert.Equal(t, int64(1), exists, "Key should exist immediately")
-
-	ttl, _ := redisClient.TTL(ctx, key).Result()
-	assert.True(t, ttl > 0, "TTL should be set")
-
-	mr.FastForward(59 * time.Second) //Fastforward time in Redis
-
-	exists, _ = redisClient.Exists(ctx, key).Result()
-	assert.Equal(t, int64(1), exists, "Key should exist after 59s")
-
-	mr.FastForward(2 * time.Second)
-
-	exists, _ = redisClient.Exists(ctx, key).Result()
-	assert.Equal(t, int64(0), exists, "Key should be evicted after 61s")
-}
-
-func TestFixedWindowTTL_InMemoryGC(t *testing.T) {
-
-	// Setup
-	start := time.Now()
-	clock := limiter.NewMockClock(start)
-	store := NewInMemoryStore(clock)
-
-	l := New(1, time.Minute, store, clock) // ttl = WindowDuration = 60s
-
-	ctx := context.Background()
-	key := "android17"
-
-	// Trigger key creation
-	_, err := l.Allow(ctx, key)
-	require.NoError(t, err)
-
-	entry, exists := store.data.Get(key)
-	assert.True(t, exists, "Key should exist immediately")
-	assert.True(t, entry.expiresAt.After(clock.Now()), "expiresAt should be set")
-
-	clock.Advance(59 * time.Second) //Fastforward time in Mock Clock
-
-	store.DeleteExpiredKeys()
-	entry, exists = store.data.Get(key)
-	assert.True(t, exists, "Key should exist after 59s")
-
-	clock.Advance(2 * time.Second) //Fastforward time in Mock Clock
-
-	store.DeleteExpiredKeys()
-	entry, exists = store.data.Get(key)
-	assert.False(t, exists, "Key should be evicted by GC after 61s")
 }

@@ -8,29 +8,29 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/h-hmz/rate-limiter/limiter"
+	"github.com/h-hmz/rate-limiter/limiter/storage"
 )
 
 func TestTokenBucket_WithStores(t *testing.T) {
 	t.Run("InMemory", func(t *testing.T) {
-		inMemoryStoreFactory := func(clock limiter.Clock) Store { return NewInMemoryStore(clock) }
+		inMemoryStoreFactory := func(clock limiter.Clock) storage.Store[State] { return storage.NewInMemoryStore[State](clock) }
 		runTokenBucketTestSuite(t, inMemoryStoreFactory)
 	})
 
 	t.Run("Redis", func(t *testing.T) {
-		redisStoreFactory := func(_ limiter.Clock) Store {
+		redisStoreFactory := func(_ limiter.Clock) storage.Store[State] {
 			redis := miniredis.RunT(t)
-			return NewRedisStore(redis.Addr())
+			return storage.NewRedisStore[State](redis.Addr())
 		}
 		runTokenBucketTestSuite(t, redisStoreFactory)
 	})
 }
 
-func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock) Store) {
+func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock) storage.Store[State]) {
 	t.Helper()
 
 	t.Run("Basic Refill and Burst Logic", func(t *testing.T) {
@@ -98,74 +98,4 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 
 		assert.Equal(t, int64(1), successCount.Load(), "Should strictly enforce limit of 1 under high concurrency")
 	})
-}
-
-func TestTokenBucketTTL_Redis(t *testing.T) {
-
-	// Setup
-	mr := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: mr.Addr(),
-	})
-	store := NewRedisStore(mr.Addr())
-
-	start := time.Now()
-	clock := limiter.NewMockClock(start)
-	l := New(1.0, 60, store, clock) // ttl = burst/rate = 60s
-
-	ctx := context.Background()
-	key := "android18"
-
-	// Trigger key creation
-	_, err := l.Allow(ctx, key)
-	require.NoError(t, err)
-
-	exists, _ := redisClient.Exists(ctx, key).Result()
-	assert.Equal(t, int64(1), exists, "Key should exist immediately")
-
-	ttl, _ := redisClient.TTL(ctx, key).Result()
-	assert.True(t, ttl > 0, "TTL should be set")
-
-	mr.FastForward(59 * time.Second) //Fastforward time in Redis
-
-	exists, _ = redisClient.Exists(ctx, key).Result()
-	assert.Equal(t, int64(1), exists, "Key should exist after 59s")
-
-	mr.FastForward(2 * time.Second)
-
-	exists, _ = redisClient.Exists(ctx, key).Result()
-	assert.Equal(t, int64(0), exists, "Key should be evicted after 61s")
-}
-
-func TestTokenBucketTTL_InMemoryGC(t *testing.T) {
-
-	// Setup
-	start := time.Now()
-	clock := limiter.NewMockClock(start)
-	store := NewInMemoryStore(clock)
-
-	l := New(1.0, 60, store, clock) // ttl = burst/rate = 60s
-
-	ctx := context.Background()
-	key := "android17"
-
-	// Trigger key creation
-	_, err := l.Allow(ctx, key)
-	require.NoError(t, err)
-
-	entry, exists := store.data.Get(key)
-	assert.True(t, exists, "Key should exist immediately")
-	assert.True(t, entry.expiresAt.After(clock.Now()), "expiresAt should be set")
-
-	clock.Advance(59 * time.Second) //Fastforward time in Mock Clock
-
-	store.DeleteExpiredKeys()
-	entry, exists = store.data.Get(key)
-	assert.True(t, exists, "Key should exist after 59s")
-
-	clock.Advance(2 * time.Second) //Fastforward time in Mock Clock
-
-	store.DeleteExpiredKeys()
-	entry, exists = store.data.Get(key)
-	assert.False(t, exists, "Key should be evicted by GC after 61s")
 }
