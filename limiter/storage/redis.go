@@ -8,22 +8,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-type Initializable interface {
-	IsInitialized() bool
-}
-
-type RedisStore[T Initializable] struct {
+type RedisStore[T any] struct {
 	rdb *redis.Client
 }
 
-// Verify at compile time that RedisStore implements *Store* interface
-type interfaceValidator struct{}
+var _ Store[int] = (*RedisStore[int])(nil)
 
-func (c interfaceValidator) IsInitialized() bool { return true }
-
-var _ Store[interfaceValidator] = (*RedisStore[interfaceValidator])(nil)
-
-func NewRedisStore[T Initializable](redisAddr string) *RedisStore[T] {
+func NewRedisStore[T any](redisAddr string) *RedisStore[T] {
 	return &RedisStore[T]{
 		rdb: redis.NewClient(&redis.Options{
 			Addr: redisAddr,
@@ -42,14 +33,17 @@ func (r RedisStore[T]) AtomicUpdate(ctx context.Context, key string, ttl time.Du
 
 		var currentState T
 
-		err := tx.HGetAll(ctx, key).Scan(&currentState)
+		cmd := tx.HGetAll(ctx, key)
+		vals, err := cmd.Result()
 		if err != nil {
 			return err
 		}
-
-		// HGetAll returns empty struct if key is missing.
-		if !currentState.IsInitialized() {
+		if len(vals) == 0 {
 			currentState = init()
+		} else {
+			if err := cmd.Scan(&currentState); err != nil {
+				return err
+			}
 		}
 
 		// Actual operation (local in optimistic lock)
