@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/h-hmz/rate-limiter/limiter"
-	"github.com/h-hmz/rate-limiter/limiter/storage"
+	limiter "github.com/h-hmz/rate-limiter"
+	"github.com/h-hmz/rate-limiter/storage"
 )
 
 type State struct {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/h-hmz/rate-limiter/limiter"
-	"github.com/h-hmz/rate-limiter/limiter/internal/shardedmap"
+	limiter "github.com/h-hmz/rate-limiter"
+	"github.com/h-hmz/rate-limiter/internal/shardedmap"
 )
 
 type InMemoryStore[T any] struct {

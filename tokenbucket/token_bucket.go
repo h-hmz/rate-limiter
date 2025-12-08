@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/h-hmz/rate-limiter/limiter"
-	"github.com/h-hmz/rate-limiter/limiter/storage"
+	limiter "github.com/h-hmz/rate-limiter"
+	"github.com/h-hmz/rate-limiter/storage"
 )
 
 type State struct {
-	Tokens     int64     `redis:"tokens"` //Note: Redis tags are leaking domain knowledge?
+	Tokens     int64     `redis:"tokens"`
 	LastRefill time.Time `redis:"last_refill"`
 }
 
@@ -39,14 +39,16 @@ func New(rate float64, burst int64, store storage.Store[State], clock limiter.Cl
 
 func (r *Limiter) Allow(ctx context.Context, key string) (bool, error) {
 
+	now := r.clock.Now()
+
 	_, isAllowed, err := r.store.AtomicUpdate(ctx, key, r.ttl,
 		func() State { //initialization state in case of a new user
-			return State{Tokens: r.burst, LastRefill: r.clock.Now()}
+			return State{Tokens: r.burst, LastRefill: now}
 		},
 		func(userQuota State) (State, bool) {
 
-			userQuota.Tokens += int64(float64(r.clock.Now().Sub(userQuota.LastRefill).Seconds() * r.rate))
-			userQuota.LastRefill = r.clock.Now()
+			userQuota.Tokens += int64(float64(now.Sub(userQuota.LastRefill).Seconds() * r.rate))
+			userQuota.LastRefill = now
 
 			if userQuota.Tokens > r.burst {
 				userQuota.Tokens = r.burst

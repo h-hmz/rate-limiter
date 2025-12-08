@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/h-hmz/rate-limiter/limiter"
+	limiter "github.com/h-hmz/rate-limiter"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

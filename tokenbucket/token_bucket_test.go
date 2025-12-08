@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/h-hmz/rate-limiter/limiter"
-	"github.com/h-hmz/rate-limiter/limiter/storage"
+	limiter "github.com/h-hmz/rate-limiter"
+	"github.com/h-hmz/rate-limiter/storage"
 )
 
 func TestTokenBucket_WithStores(t *testing.T) {
