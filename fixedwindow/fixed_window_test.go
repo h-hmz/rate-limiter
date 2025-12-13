@@ -46,27 +46,27 @@ func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 
 		// 2. Consume all tokens
 		for range limit {
-			allowed, err := limiterInstance.Allow(ctx, key)
+			result, err := limiterInstance.Allow(ctx, key)
 			require.NoError(t, err)
-			assert.True(t, allowed, "Request within limit should be allowed")
+			assert.True(t, result.Allowed, "Request within limit should be allowed")
 		}
 
 		// 3. Exceed Limit
-		allowed, err := limiterInstance.Allow(ctx, key)
+		result, err := limiterInstance.Allow(ctx, key)
 		require.NoError(t, err)
-		assert.False(t, allowed, "Request exceeding limit should be rejected")
+		assert.False(t, result.Allowed, "Request exceeding limit should be rejected")
 
 		// 4. Advance Clock (Halfway) -> Should still reject
 		clock.Advance(30 * time.Second)
-		allowed, err = limiterInstance.Allow(ctx, key)
+		result, err = limiterInstance.Allow(ctx, key)
 		require.NoError(t, err)
-		assert.False(t, allowed, "Request in same window should be rejected")
+		assert.False(t, result.Allowed, "Request in same window should be rejected")
 
 		// 5. Advance Clock (New Window) -> Should allow
 		clock.Advance(31 * time.Second) // Total > 60s
-		allowed, err = limiterInstance.Allow(ctx, key)
+		result, err = limiterInstance.Allow(ctx, key)
 		require.NoError(t, err)
-		assert.True(t, allowed, "Request in new window should be allowed")
+		assert.True(t, result.Allowed, "Request in new window should be allowed")
 	})
 
 	t.Run("Concurrency Safety", func(t *testing.T) {
@@ -87,9 +87,9 @@ func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				isAllowed, err := limiterInstance.Allow(ctx, key)
+				result, err := limiterInstance.Allow(ctx, key)
 				require.NoError(t, err)
-				if isAllowed {
+				if result.Allowed {
 					successCount.Add(1)
 				}
 			}()

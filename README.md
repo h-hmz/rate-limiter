@@ -1,49 +1,117 @@
-Good system design is not about being clever enough to foresee the final shape.
-It’s about being patient enough to let the shape reveal itself under pressure.
+# rate-limiter
 
-# Repeatable loop for finding the right abstractions
+A production-oriented rate limiting library in Go, built to showcase clean abstraction design, concurrency safety, and storage portability.
 
-1. Write something concrete
-2. Feel friction
-3. Capture it in a test or constraint
-4. Name the implicit assumption
-5. Extract the smallest possible abstraction
-6. Stop
+Two algorithms are implemented: **Fixed Window** and **Token Bucket**. Both backed by the same generic storage interface, with in-memory and Redis backends that are fully interchangeable.
 
-# The key insight for refactoring Storage after introducing Fixed Window algorithm
+## Usage
 
-First proposal to move to a generic storage was:
+A typical wiring in your application:
 
 ```go
-type Storage interface {
-	Get(ctx context.Context, key string, val any) error
-	Set(ctx context.Context, key string, val any) error
-}
+import (
+    "net/http"
+    "os"
+    "time"
+
+    ratelimiter  "github.com/h-hmz/rate-limiter"
+    rlmiddleware "github.com/h-hmz/rate-limiter/middleware"
+    rlstorage    "github.com/h-hmz/rate-limiter/storage"
+    "github.com/h-hmz/rate-limiter/tokenbucket"
+)
+
+store := rlstorage.NewRedisStore[tokenbucket.State](os.Getenv("REDIS_ADDR"))
+limiter := tokenbucket.New(
+    10.0,   // refill rate: tokens per second
+    50,     // burst capacity
+    store,
+    &ratelimiter.WallClock{},
+)
+
+http.Handle("/api/", rlmiddleware.HttpMiddleware(
+    limiter,
+    rlmiddleware.APIKeyHeaderExtractor("X-API-Key"),
+)(myHandler))
 ```
-this looks more generic, but it actually makes things worse:
 
-1. It hides semantics instead of expressing them. The interface now says: "I store... something"? But the algorithm still knows exactly what it wants.
-The knowledge moved into type assertions/abstraction.
+Swap `rlstorage.NewRedisStore` for `rlstorage.NewInMemoryStore` for single-instance deployments, or swap `tokenbucket` for `fixedwindow`. The middleware and the rest of the wiring stay the same.
 
-2. It pushes correctness from compile time to runtime.
+## Features
 
-We didn't have **one storage abstraction**
+- **Two algorithms**: Fixed Window and Token Bucket
+- **Two backends**: in-memory (sharded map) and Redis (optimistic locking via WATCH/MULTI/EXEC)
+- **Storage-portable**: swap backends without changing algorithm code
+- **Concurrency-safe**: sharded locking for in-memory, atomic transactions for Redis
+- **Testable**: injectable `Clock` interface enables deterministic time-based tests
+- **HTTP middleware** included, with a composable `KeyExtractor` pattern
 
-We had **two collapsed layers**:
+## Algorithms
 
-1. Algorithm state (domain)
-2. Persistence mechanism (infrastructure)
+### Fixed Window
 
-When there was one algorithm, collapsing them was fine. With two algorithms, that collapse breaks.
-So the fix is not to "make the storage more generic", but to **separate what is stored from how it is stored**.
+Limits requests to `N` per time window. The window resets on a fixed schedule (e.g. every 60s from epoch), not from first request.
 
-## Thinking Shift about Abstractions
+```go
+store := storage.NewInMemoryStore[fixedwindow.State](clock)
+limiter := fixedwindow.New(
+    100,           // tokens per window
+    time.Minute,   // window duration
+    store,
+    &limiter.WallClock{},
+)
 
-Don't ask "What interface do I need?"
-Ask: "Who owns this concept?"
+allowed, err := limiter.Allow(ctx, "user-id")
+```
 
-Abstractions become obvious when ownership is clear.
+### Token Bucket
 
-# Lua Scripts vs Redis Transactions (EXEC/WATCH/MULTI)
+Tokens refill continuously at a fixed rate up to a burst capacity. Allows short bursts while enforcing a long-term average rate.
 
-Considering that we are rate limiting on a per-user basis, low contention is expected so optimistic locking through Redis transactions is OK.
+```go
+store := storage.NewInMemoryStore[tokenbucket.State](clock)
+limiter := tokenbucket.New(
+    10.0,          // refill rate: tokens per second
+    100,           // burst capacity
+    store,
+    &limiter.WallClock{},
+)
+
+allowed, err := limiter.Allow(ctx, "user-id")
+```
+
+## Backends
+
+### In-Memory
+
+Uses a sharded map (256 shards, xxhash) to minimize lock contention. Supports TTL with lazy expiration and an optional background GC.
+
+```go
+store := storage.NewInMemoryStore[fixedwindow.State](&limiter.WallClock{})
+
+// Optional: run background GC every 5 minutes
+store.StartGC(5 * time.Minute)
+```
+
+### Redis
+
+Uses optimistic locking (WATCH/MULTI/EXEC) with retry. Suitable for distributed deployments where multiple instances share state.
+
+```go
+store := storage.NewRedisStore[fixedwindow.State]("localhost:6379")
+```
+
+> The Redis backend stores algorithm state as a Redis hash, using struct field tags (`redis:"..."`) for mapping.
+
+## HTTP Middleware
+
+```go
+limiterInstance := fixedwindow.New(100, time.Minute, store, &limiter.WallClock{})
+
+mux := http.NewServeMux()
+mux.Handle("/api/", middleware.HttpMiddleware(
+    limiterInstance,
+    middleware.APIKeyHeaderExtractor("X-API-Key"),
+)(myHandler))
+```
+
+`KeyExtractor` is a plain function type. It easy to replace with IP-based, JWT-based, or any other extraction logic.

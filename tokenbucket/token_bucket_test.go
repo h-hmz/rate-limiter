@@ -47,26 +47,26 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 
 		// 2. Consume Initial Burst (10 tokens)
 		for range burst {
-			isAllowed, err := limiterInstance.Allow(ctx, key)
+			result, err := limiterInstance.Allow(ctx, key)
 			require.NoError(t, err)
-			assert.True(t, isAllowed, "Request within burst should be allowed")
+			assert.True(t, result.Allowed, "Request within burst should be allowed")
 		}
 
 		// 3. Verify Limit Reached
-		isAllowed, _ := limiterInstance.Allow(ctx, key)
-		assert.False(t, isAllowed, "Request exceeing limit should be rejected (bucket empty)")
+		result, _ := limiterInstance.Allow(ctx, key)
+		assert.False(t, result.Allowed, "Request exceeing limit should be rejected (bucket empty)")
 
 		// 4. Advance Clock & Verify Refill
 		// Advance 1 second -> Should refill 1 token (Rate is 1/sec)
 		clock.Advance(time.Second)
 
-		isAllowed, _ = limiterInstance.Allow(ctx, key)
-		assert.True(t, isAllowed, "Request after 1s refill should be allowed")
+		result, _ = limiterInstance.Allow(ctx, key)
+		assert.True(t, result.Allowed, "Request after 1s refill should be allowed")
 
 		// 5. Verify Token Consumption
 		// That single refilled token is now gone, next request must fail
-		isAllowed, _ = limiterInstance.Allow(ctx, key)
-		assert.False(t, isAllowed, "Request should be rejected again (refilled token consumed)")
+		result, _ = limiterInstance.Allow(ctx, key)
+		assert.False(t, result.Allowed, "Request should be rejected again (refilled token consumed)")
 	})
 
 	t.Run("Concurrency Safety", func(t *testing.T) {
@@ -88,8 +88,8 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				isAllowed, _ := limiterInstance.Allow(ctx, key)
-				if isAllowed {
+				result, _ := limiterInstance.Allow(ctx, key)
+				if result.Allowed {
 					successCount.Add(1)
 				}
 			}()

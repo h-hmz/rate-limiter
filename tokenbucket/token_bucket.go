@@ -37,11 +37,11 @@ func New(rate float64, burst int64, store storage.Store[State], clock limiter.Cl
 	}
 }
 
-func (r *Limiter) Allow(ctx context.Context, key string) (bool, error) {
+func (r *Limiter) Allow(ctx context.Context, key string) (limiter.Result, error) {
 
 	now := r.clock.Now()
 
-	_, isAllowed, err := r.store.AtomicUpdate(ctx, key, r.ttl,
+	state, isAllowed, err := r.store.AtomicUpdate(ctx, key, r.ttl,
 		func() State { //initialization state in case of a new user
 			return State{Tokens: r.burst, LastRefill: now}
 		},
@@ -63,8 +63,19 @@ func (r *Limiter) Allow(ctx context.Context, key string) (bool, error) {
 		})
 
 	if err != nil {
-		return false, err
+		return limiter.Result{}, err
 	}
 
-	return isAllowed, nil
+	// RetryAfter in Token Bucket: time to refill one token
+	var retryAfter time.Duration
+	if r.rate > 0 {
+		retryAfter = time.Duration(float64(time.Second) / r.rate)
+	}
+
+	return limiter.Result{
+		Allowed:    isAllowed,
+		Limit:      r.burst,
+		Remaining:  state.Tokens,
+		RetryAfter: retryAfter,
+	}, nil
 }

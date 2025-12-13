@@ -4,10 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
+
+	limiter "github.com/h-hmz/rate-limiter"
 )
 
 type Limiter interface {
-	Allow(ctx context.Context, key string) (bool, error)
+	Allow(ctx context.Context, key string) (limiter.Result, error)
 }
 
 type KeyExtractor func(r *http.Request) (string, error)
@@ -33,17 +36,24 @@ func HttpMiddleware(limiter Limiter, keyExtrator KeyExtractor) func(next http.Ha
 				return
 			}
 
-			allowed, err := limiter.Allow(r.Context(), key)
+			result, err := limiter.Allow(r.Context(), key)
 			if err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
 			}
-			if !allowed {
+
+			w.Header().Set("X-RateLimit-Limit", strconv.FormatInt(result.Limit, 10))
+			w.Header().Set("X-RateLimit-Remaining", strconv.FormatInt(result.Remaining, 10))
+
+			if !result.Allowed {
+				if result.RetryAfter > 0 {
+					w.Header().Set("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
+				}
 				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 				return
 			}
-			next.ServeHTTP(w, r)
 
+			next.ServeHTTP(w, r)
 		})
 	}
 }
