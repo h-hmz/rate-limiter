@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -66,22 +67,37 @@ func (r RedisStore[T]) AtomicUpdate(ctx context.Context, key string, ttl time.Du
 		return err
 	}
 
-	// Retry if the key has been changed.
-	maxRetries := 100
-	for range maxRetries {
+	// Retry on optimistic lock failure with exponential backoff + full jitter
+	// to avoid thundering herd under contention.
+	// See: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
+	const (
+		maxRetries = 20
+		baseDelay  = time.Millisecond
+		maxDelay   = 16 * time.Millisecond
+	)
+
+	for attempt := range maxRetries {
 		err := r.rdb.Watch(ctx, txf, key)
 		if err == nil {
 			// Success.
 			return finalState, finalAllowed, nil
 		}
-		if err == redis.TxFailedErr {
-			if ctx.Err() != nil {
-				return zero, false, ctx.Err()
-			}
-			continue // Optimistic lock lost. Retry.
+		if err != redis.TxFailedErr {
+			// Return any other error.
+			return zero, false, err
 		}
-		// Return any other error.
-		return zero, false, err
+		if ctx.Err() != nil {
+			return zero, false, ctx.Err()
+		}
+
+		// Optimistic lock lost. Backoff and retry.
+		backoffCap := min(maxDelay, baseDelay*time.Duration(1<<attempt))
+		sleep := time.Duration(rand.Int64N(int64(backoffCap)))
+		select {
+		case <-time.After(sleep):
+		case <-ctx.Done():
+			return zero, false, ctx.Err()
+		}
 	}
 
 	return zero, false, errors.New("redis AtomicUpdate: max retries exceeded")
