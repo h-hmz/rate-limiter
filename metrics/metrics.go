@@ -76,13 +76,23 @@ func (l *InstrumentedLimiter) Allow(ctx context.Context, key string) (limiter.Re
 	l.latency.Record(ctx, time.Since(start).Seconds())
 
 	if err != nil {
+		l.requestsTotal.Add(ctx, 1,
+			metric.WithAttributes(
+				attribute.String("outcome", "error"),
+			),
+		)
 		return result, err
+	}
+
+	outcome := "denied"
+	if result.Allowed {
+		outcome = "allowed"
 	}
 	l.requestsTotal.Add(ctx, 1,
 		metric.WithAttributes(
-			attribute.Bool("allowed", result.Allowed),
+			attribute.String("outcome", outcome),
 		),
 	)
 
-	return result, err
+	return result, nil
 }
