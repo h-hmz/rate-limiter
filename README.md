@@ -115,3 +115,28 @@ mux.Handle("/api/", middleware.HttpMiddleware(
 ```
 
 `KeyExtractor` is a plain function type. It easy to replace with IP-based, JWT-based, or any other extraction logic.
+
+## Metrics (OpenTelemetry)
+
+The `metrics` package provides an optional decorator that records OTel metrics around any limiter. The core library has no observability dependency so consumers who don't need metrics never import this package.
+
+```go
+import (
+    rlmetrics "github.com/h-hmz/rate-limiter/metrics"
+)
+
+// Works with both tokenbucket and fixedwindow.
+instrumented, err := rlmetrics.New(limiter)
+
+// Use it anywhere you'd use the original limiter.
+http.Handle("/api/", rlmiddleware.HttpMiddleware(
+    instrumented,
+    rlmiddleware.APIKeyHeaderExtractor("X-API-Key"),
+)(myHandler))
+```
+
+This records two metrics:
+- `ratelimit.requests.total`: counter with `key` and `allowed` labels
+- `ratelimit.latency.seconds`: histogram of `Allow()` duration
+
+The decorator uses OTel's API but does not configure an exporter. That's your application's responsibility. See `/examples` for examples using configured exporters.
