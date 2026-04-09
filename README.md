@@ -146,3 +146,9 @@ This records two metrics:
 - `ratelimit.latency.seconds`: histogram of `Allow()` duration
 
 The decorator uses OTel's API but does not configure an exporter. That's your application's responsibility. See `/examples` for examples using configured exporters.
+
+## Tracing
+
+The HTTP middleware decorates the caller's active span with `ratelimit.allowed`, `ratelimit.limit`, and `ratelimit.remaining` attributes, and emits a `ratelimit.denied` event on a 429. If tracing is not configured, this is a no-op.
+
+Since the caller owns the `*redis.Client`, you can attach `redisotel.InstrumentTracing(client)` to have Redis round-trips show up as child spans of the incoming request.

@@ -25,8 +25,6 @@ type InstrumentedLimiter struct {
 	inner Limiter
 
 	// requestsTotal counts every Allow() call.
-	// Labels:
-	//   "allowed": "true" or "false"
 	requestsTotal metric.Int64Counter
 
 	// latency records the duration of each Allow() call in seconds.
@@ -66,7 +64,7 @@ func New(inner Limiter) (*InstrumentedLimiter, error) {
 	}, nil
 }
 
-// Allow delegates to the InstrumentedLimiter and records metrics around the call.
+// Allow delegates to the wrapped limiter and records metrics around the call.
 func (l *InstrumentedLimiter) Allow(ctx context.Context, key string) (limiter.Result, error) {
 	start := time.Now()
 

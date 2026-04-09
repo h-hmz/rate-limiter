@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	limiter "github.com/h-hmz/rate-limiter"
 )
 
@@ -42,10 +45,19 @@ func HttpMiddleware(limiter Limiter, keyExtrator KeyExtractor) func(next http.Ha
 				return
 			}
 
+			// Decorate the caller's active span. No-op if tracing is not configured.
+			span := trace.SpanFromContext(r.Context())
+			span.SetAttributes(
+				attribute.Bool("ratelimit.allowed", result.Allowed),
+				attribute.Int64("ratelimit.limit", result.Limit),
+				attribute.Int64("ratelimit.remaining", result.Remaining),
+			)
+
 			w.Header().Set("X-RateLimit-Limit", strconv.FormatInt(result.Limit, 10))
 			w.Header().Set("X-RateLimit-Remaining", strconv.FormatInt(result.Remaining, 10))
 
 			if !result.Allowed {
+				span.AddEvent("ratelimit.denied")
 				if result.RetryAfter > 0 {
 					w.Header().Set("Retry-After", strconv.Itoa(int(result.RetryAfter.Seconds())))
 				}
