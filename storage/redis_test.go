@@ -26,7 +26,7 @@ func TestRedisStore_TTL(t *testing.T) {
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: mr.Addr(),
 	})
-	store := NewRedisStore[RStateMock](mr.Addr())
+	store := NewRedisStore[RStateMock](redisClient)
 
 	ttl := time.Minute
 

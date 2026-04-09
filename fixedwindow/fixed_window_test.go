@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,8 +24,9 @@ func TestFixedWindow_WithStores(t *testing.T) {
 
 	t.Run("Redis", func(t *testing.T) {
 		redisStoreFactory := func(_ limiter.Clock) storage.Store[State] {
-			redis := miniredis.RunT(t)
-			return storage.NewRedisStore[State](redis.Addr())
+			mr := miniredis.RunT(t)
+			client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+			return storage.NewRedisStore[State](client)
 		}
 		runFixedWindowTestSuite(t, redisStoreFactory)
 	})

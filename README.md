@@ -14,13 +14,16 @@ import (
     "os"
     "time"
 
+    "github.com/redis/go-redis/v9"
+
     ratelimiter  "github.com/h-hmz/rate-limiter"
     rlmiddleware "github.com/h-hmz/rate-limiter/middleware"
     rlstorage    "github.com/h-hmz/rate-limiter/storage"
     "github.com/h-hmz/rate-limiter/tokenbucket"
 )
 
-store := rlstorage.NewRedisStore[tokenbucket.State](os.Getenv("REDIS_ADDR"))
+client := redis.NewClient(&redis.Options{Addr: os.Getenv("REDIS_ADDR")})
+store := rlstorage.NewRedisStore[tokenbucket.State](client)
 limiter := tokenbucket.New(
     10.0,   // refill rate: tokens per second
     50,     // burst capacity
@@ -97,8 +100,11 @@ store.StartGC(5 * time.Minute)
 Uses optimistic locking (WATCH/MULTI/EXEC) with retry. Suitable for distributed deployments where multiple instances share state.
 
 ```go
-store := storage.NewRedisStore[fixedwindow.State]("localhost:6379")
+client := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+store := storage.NewRedisStore[fixedwindow.State](client)
 ```
+
+The `*redis.Client` is injected by the caller (rather than constructed inside the store) so that TLS, pool sizing, timeouts, sentinel/cluster topology, and tracing instrumentation (`redisotel.InstrumentTracing(client)`) all remain under the application's control.
 
 > The Redis backend stores algorithm state as a Redis hash, using struct field tags (`redis:"..."`) for mapping.
 
@@ -136,7 +142,7 @@ http.Handle("/api/", rlmiddleware.HttpMiddleware(
 ```
 
 This records two metrics:
-- `ratelimit.requests.total`: counter with `key` and `allowed` labels
+- `ratelimit.requests.total`: counter labeled by `outcome` (`allowed`, `denied`, `error`)
 - `ratelimit.latency.seconds`: histogram of `Allow()` duration
 
 The decorator uses OTel's API but does not configure an exporter. That's your application's responsibility. See `/examples` for examples using configured exporters.

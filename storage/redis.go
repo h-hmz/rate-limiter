@@ -15,12 +15,8 @@ type RedisStore[T any] struct {
 
 var _ Store[int] = (*RedisStore[int])(nil)
 
-func NewRedisStore[T any](redisAddr string) *RedisStore[T] {
-	return &RedisStore[T]{
-		rdb: redis.NewClient(&redis.Options{
-			Addr: redisAddr,
-		}),
-	}
+func NewRedisStore[T any](client *redis.Client) *RedisStore[T] {
+	return &RedisStore[T]{rdb: client}
 }
 
 func (r RedisStore[T]) AtomicUpdate(ctx context.Context, key string, ttl time.Duration, init func() T, fn func(T) (T, bool)) (T, bool, error) {
@@ -50,7 +46,7 @@ func (r RedisStore[T]) AtomicUpdate(ctx context.Context, key string, ttl time.Du
 		// Actual operation (local in optimistic lock)
 		newState, allowed := fn(currentState)
 
-		// Operation is commited only if the watched keys remain unchanged.
+		// Operation is committed only if the watched keys remain unchanged.
 		_, err = tx.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
 			pipe.HSet(ctx, key, newState)
 			if ttl > 0 {
