@@ -18,9 +18,9 @@ import (
 func main() {
 	redisAddr := "localhost:6379"
 
-	// The caller owns the *redis.Client. This is the seam where you'd wire
-	// up TLS, pool tuning, or redisotel.InstrumentTracing(client) so Redis
-	// spans attach to the caller's active trace.
+	// The caller owns the *redis.Client. This is where you'd wire up TLS,
+	// pool tuning, or redisotel.InstrumentTracing(client) so Redis spans
+	// attach to the caller's active trace.
 	client := redis.NewClient(&redis.Options{Addr: redisAddr})
 	store := rlstorage.NewRedisStore[tokenbucket.State](client)
 	limiter := tokenbucket.New(

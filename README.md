@@ -151,4 +151,4 @@ The decorator uses OTel's API but does not configure an exporter. That's your ap
 
 The HTTP middleware decorates the caller's active span with `ratelimit.allowed`, `ratelimit.limit`, and `ratelimit.remaining` attributes, and emits a `ratelimit.denied` event on a 429. If tracing is not configured, this is a no-op.
 
-Since the caller owns the `*redis.Client`, you can attach `redisotel.InstrumentTracing(client)` to have Redis round-trips show up as child spans of the incoming request.
+Since the caller owns the `*redis.Client`, you can attach `redisotel.InstrumentTracing(client)` to have Redis round-trips show up as child spans of the incoming request. See [`examples/tracing`](examples/tracing) for a runnable setup (app + Redis + Jaeger via `docker compose up`).
