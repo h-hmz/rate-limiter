@@ -1,6 +1,13 @@
 package limiter
 
-import "time"
+import (
+	"context"
+	"time"
+)
+
+type Limiter interface {
+	Allow(ctx context.Context, key string) (Result, error)
+}
 
 type Result struct {
 	Allowed    bool

@@ -19,7 +19,7 @@ func NewRedisStore[T any](client *redis.Client) *RedisStore[T] {
 	return &RedisStore[T]{rdb: client}
 }
 
-func (r RedisStore[T]) AtomicUpdate(ctx context.Context, key string, ttl time.Duration, init func() T, fn func(T) (T, bool)) (T, bool, error) {
+func (r *RedisStore[T]) AtomicUpdate(ctx context.Context, key string, ttl time.Duration, init func() T, fn func(T) (T, bool)) (T, bool, error) {
 
 	var finalAllowed bool
 	var finalState T

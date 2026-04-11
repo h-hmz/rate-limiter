@@ -16,13 +16,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-type Limiter interface {
-	Allow(ctx context.Context, key string) (limiter.Result, error)
-}
-
 // InstrumentedLimiter wraps any Limiter and records OTel metrics on every call.
 type InstrumentedLimiter struct {
-	inner Limiter
+	limiter.Limiter
 
 	// requestsTotal counts every Allow() call.
 	requestsTotal metric.Int64Counter
@@ -32,7 +28,7 @@ type InstrumentedLimiter struct {
 }
 
 // New creates an InstrumentedLimiter around the given limiter.
-func New(inner Limiter) (*InstrumentedLimiter, error) {
+func New(inner limiter.Limiter) (*InstrumentedLimiter, error) {
 	meter := otel.Meter("ratelimiter")
 
 	requestsTotal, err := meter.Int64Counter(
@@ -58,7 +54,7 @@ func New(inner Limiter) (*InstrumentedLimiter, error) {
 	}
 
 	return &InstrumentedLimiter{
-		inner:         inner,
+		Limiter:       inner,
 		requestsTotal: requestsTotal,
 		latency:       latency,
 	}, nil
@@ -68,7 +64,7 @@ func New(inner Limiter) (*InstrumentedLimiter, error) {
 func (l *InstrumentedLimiter) Allow(ctx context.Context, key string) (limiter.Result, error) {
 	start := time.Now()
 
-	result, err := l.inner.Allow(ctx, key)
+	result, err := l.Limiter.Allow(ctx, key)
 
 	// Record latency regardless of error, a slow failure is still interesting from an observability perspective.
 	l.latency.Record(ctx, time.Since(start).Seconds())

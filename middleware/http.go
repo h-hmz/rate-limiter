@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,10 +10,6 @@ import (
 
 	limiter "github.com/h-hmz/rate-limiter"
 )
-
-type Limiter interface {
-	Allow(ctx context.Context, key string) (limiter.Result, error)
-}
 
 type KeyExtractor func(r *http.Request) (string, error)
 
@@ -29,17 +24,17 @@ func APIKeyHeaderExtractor(headerName string) KeyExtractor {
 	}
 }
 
-func HttpMiddleware(limiter Limiter, keyExtrator KeyExtractor) func(next http.Handler) http.Handler {
+func HttpMiddleware(l limiter.Limiter, keyExtractor KeyExtractor) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-			key, err := keyExtrator(r)
+			key, err := keyExtractor(r)
 			if err != nil {
 				http.Error(w, "Rate limiting key missing: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 
-			result, err := limiter.Allow(r.Context(), key)
+			result, err := l.Allow(r.Context(), key)
 			if err != nil {
 				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 				return
