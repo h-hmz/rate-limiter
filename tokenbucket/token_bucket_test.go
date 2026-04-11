@@ -2,6 +2,7 @@ package tokenbucket
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -99,5 +100,73 @@ func runTokenBucketTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 		wg.Wait()
 
 		assert.Equal(t, int64(1), successCount.Load(), "Should strictly enforce limit of 1 under high concurrency")
+	})
+}
+
+func BenchmarkTokenBucket_InMemory(b *testing.B) {
+	clock := &limiter.WallClock{}
+	store := storage.NewInMemoryStore[State](clock)
+	l := New(1000, 10000, store, clock)
+	runAllowBenchmarks(b, l)
+}
+
+func BenchmarkTokenBucket_Redis(b *testing.B) {
+	mr := miniredis.RunT(b)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	clock := &limiter.WallClock{}
+	store := storage.NewRedisStore[State](client)
+	l := New(1000, 10000, store, clock)
+	runAllowBenchmarks(b, l)
+}
+
+func runAllowBenchmarks(b *testing.B, l *Limiter) {
+	b.Helper()
+	ctx := context.Background()
+
+	// Single key: measures per-call cost under same-shard contention.
+	b.Run("SingleKey", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			l.Allow(ctx, "bench-single")
+		}
+	})
+
+	// Multiple keys: exercises shard distribution across 256 shards.
+	b.Run("MultiKey", func(b *testing.B) {
+		b.ReportAllocs()
+		keys := make([]string, 1024)
+		for i := range keys {
+			keys[i] = fmt.Sprintf("bench-%d", i)
+		}
+		for i := 0; b.Loop(); i++ {
+			l.Allow(ctx, keys[i%len(keys)])
+		}
+	})
+
+	// Parallel single key: worst-case lock contention (all goroutines on one shard).
+	b.Run("Parallel/SingleKey", func(b *testing.B) {
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				l.Allow(ctx, "bench-parallel-single")
+			}
+		})
+	})
+
+	// Parallel multiple keys: realistic scenario with low per-shard contention.
+	b.Run("Parallel/MultiKey", func(b *testing.B) {
+		b.ReportAllocs()
+		keys := make([]string, 1024)
+		for i := range keys {
+			keys[i] = fmt.Sprintf("bench-parallel-%d", i)
+		}
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			i := 0
+			for pb.Next() {
+				l.Allow(ctx, keys[i%len(keys)])
+				i++
+			}
+		})
 	})
 }

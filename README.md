@@ -37,6 +37,14 @@ http.Handle("/api/", rlmiddleware.HttpMiddleware(
 )(myHandler))
 ```
 
+### Examples
+
+| Example | What it shows | Run |
+|---|---|---|
+| [prometheus](examples/prometheus) | Metrics export with Prometheus scrape endpoint | `go run ./examples/prometheus` |
+| [redis](examples/redis) | Distributed rate limiting with Redis backend | `docker compose up` |
+| [tracing](examples/tracing) | Full OpenTelemetry tracing with Jaeger | `docker compose up` |
+
 Swap `rlstorage.NewRedisStore` for `rlstorage.NewInMemoryStore` for single-instance deployments, or swap `tokenbucket` for `fixedwindow`. The middleware and the rest of the wiring stay the same.
 
 ## Features
@@ -152,3 +160,38 @@ The decorator uses OTel's API but does not configure an exporter. That's your ap
 The HTTP middleware decorates the caller's active span with `ratelimit.allowed`, `ratelimit.limit`, and `ratelimit.remaining` attributes, and emits a `ratelimit.denied` event on a 429. If tracing is not configured, this is a no-op.
 
 Since the caller owns the `*redis.Client`, you can attach `redisotel.InstrumentTracing(client)` to have Redis round-trips show up as child spans of the incoming request. See [`examples/tracing`](examples/tracing) for a runnable setup (app + Redis + Jaeger via `docker compose up`).
+
+## Benchmarks
+
+<details>
+<summary>Click to expand benchmark results</summary>
+
+```
+go test -bench=. -benchmem ./tokenbucket/ ./fixedwindow/
+```
+
+```
+pkg: github.com/h-hmz/rate-limiter/tokenbucket
+BenchmarkTokenBucket_InMemory/SingleKey-12              7537569       158.8 ns/op     96 B/op    2 allocs/op
+BenchmarkTokenBucket_InMemory/MultiKey-12               6528117       182.6 ns/op     96 B/op    2 allocs/op
+BenchmarkTokenBucket_InMemory/Parallel/SingleKey-12     4503274       282.8 ns/op     96 B/op    2 allocs/op
+BenchmarkTokenBucket_InMemory/Parallel/MultiKey-12     16773902        76.37 ns/op    96 B/op    2 allocs/op
+BenchmarkTokenBucket_Redis/SingleKey-12                    3934    303420 ns/op      5286 B/op  168 allocs/op
+BenchmarkTokenBucket_Redis/MultiKey-12                     4185    317696 ns/op      5373 B/op  164 allocs/op
+BenchmarkTokenBucket_Redis/Parallel/SingleKey-12           3669    327172 ns/op     10112 B/op  317 allocs/op
+BenchmarkTokenBucket_Redis/Parallel/MultiKey-12           26572     51890 ns/op      5394 B/op  170 allocs/op
+
+pkg: github.com/h-hmz/rate-limiter/fixedwindow
+BenchmarkFixedWindow_InMemory/SingleKey-12              8385339       149.5 ns/op     48 B/op    2 allocs/op
+BenchmarkFixedWindow_InMemory/MultiKey-12               7163622       170.3 ns/op     48 B/op    2 allocs/op
+BenchmarkFixedWindow_InMemory/Parallel/SingleKey-12     4585948       328.9 ns/op     48 B/op    2 allocs/op
+BenchmarkFixedWindow_InMemory/Parallel/MultiKey-12     20153604        60.88 ns/op    48 B/op    2 allocs/op
+BenchmarkFixedWindow_Redis/SingleKey-12                    4120    289562 ns/op      5144 B/op  168 allocs/op
+BenchmarkFixedWindow_Redis/MultiKey-12                     2773    404115 ns/op      5291 B/op  163 allocs/op
+BenchmarkFixedWindow_Redis/Parallel/SingleKey-12           2888    407865 ns/op     10210 B/op  327 allocs/op
+BenchmarkFixedWindow_Redis/Parallel/MultiKey-12           24246     49447 ns/op      5234 B/op  169 allocs/op
+```
+
+Redis benchmarks use [miniredis](https://github.com/alicebob/miniredis) (in-process, no network). They reflect allocation overhead and protocol cost, not real network latency.
+
+</details>

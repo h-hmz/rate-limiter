@@ -2,6 +2,7 @@ package fixedwindow
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -99,5 +100,69 @@ func runFixedWindowTestSuite(t *testing.T, storeFactory func(clock limiter.Clock
 		wg.Wait()
 
 		assert.Equal(t, limit, successCount.Load(), "Should strictly enforce limit under concurrency")
+	})
+}
+
+func BenchmarkFixedWindow_InMemory(b *testing.B) {
+	clock := &limiter.WallClock{}
+	store := storage.NewInMemoryStore[State](clock)
+	l := New(100000, time.Minute, store, clock)
+	runAllowBenchmarks(b, l)
+}
+
+func BenchmarkFixedWindow_Redis(b *testing.B) {
+	mr := miniredis.RunT(b)
+	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	clock := &limiter.WallClock{}
+	store := storage.NewRedisStore[State](client)
+	l := New(100000, time.Minute, store, clock)
+	runAllowBenchmarks(b, l)
+}
+
+func runAllowBenchmarks(b *testing.B, l *Limiter) {
+	b.Helper()
+	ctx := context.Background()
+
+	b.Run("SingleKey", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			l.Allow(ctx, "bench-single")
+		}
+	})
+
+	b.Run("MultiKey", func(b *testing.B) {
+		b.ReportAllocs()
+		keys := make([]string, 1024)
+		for i := range keys {
+			keys[i] = fmt.Sprintf("bench-%d", i)
+		}
+		for i := 0; b.Loop(); i++ {
+			l.Allow(ctx, keys[i%len(keys)])
+		}
+	})
+
+	b.Run("Parallel/SingleKey", func(b *testing.B) {
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				l.Allow(ctx, "bench-parallel-single")
+			}
+		})
+	})
+
+	b.Run("Parallel/MultiKey", func(b *testing.B) {
+		b.ReportAllocs()
+		keys := make([]string, 1024)
+		for i := range keys {
+			keys[i] = fmt.Sprintf("bench-parallel-%d", i)
+		}
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			i := 0
+			for pb.Next() {
+				l.Allow(ctx, keys[i%len(keys)])
+				i++
+			}
+		})
 	})
 }
