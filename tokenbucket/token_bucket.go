@@ -9,7 +9,7 @@ import (
 )
 
 type State struct {
-	Tokens     int64     `redis:"tokens"`
+	Tokens     float64   `redis:"tokens"`
 	LastRefill time.Time `redis:"last_refill"`
 }
 
@@ -17,7 +17,7 @@ type Limiter struct {
 	store storage.Store[State]
 	clock limiter.Clock
 	rate  float64 //tokens refill rate per second
-	burst int64
+	burst float64
 	ttl   time.Duration
 }
 
@@ -32,7 +32,7 @@ func New(rate float64, burst int64, store storage.Store[State], clock limiter.Cl
 		store: store,
 		clock: clock,
 		rate:  rate,
-		burst: burst,
+		burst: float64(burst),
 		ttl:   ttl,
 	}
 }
@@ -43,18 +43,18 @@ func (r *Limiter) Allow(ctx context.Context, key string) (limiter.Result, error)
 
 	state, isAllowed, err := r.store.AtomicUpdate(ctx, key, r.ttl,
 		func() State { //initialization state in case of a new user
-			return State{Tokens: r.burst, LastRefill: now}
+			return State{Tokens: float64(r.burst), LastRefill: now}
 		},
 		func(userQuota State) (State, bool) {
 
-			userQuota.Tokens += int64(float64(now.Sub(userQuota.LastRefill).Seconds() * r.rate))
+			userQuota.Tokens += now.Sub(userQuota.LastRefill).Seconds() * r.rate
 			userQuota.LastRefill = now
 
 			if userQuota.Tokens > r.burst {
 				userQuota.Tokens = r.burst
 			}
 
-			if userQuota.Tokens > 0 {
+			if userQuota.Tokens >= 1.0 {
 				userQuota.Tokens--
 				return userQuota, true
 			}
@@ -74,8 +74,8 @@ func (r *Limiter) Allow(ctx context.Context, key string) (limiter.Result, error)
 
 	return limiter.Result{
 		Allowed:    isAllowed,
-		Limit:      r.burst,
-		Remaining:  state.Tokens,
+		Limit:      int64(r.burst),
+		Remaining:  int64(state.Tokens),
 		RetryAfter: retryAfter,
 	}, nil
 }
