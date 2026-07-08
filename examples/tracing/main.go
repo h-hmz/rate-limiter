@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -38,7 +39,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer shutdown(context.Background())
+	defer func() {
+		if err := shutdown(context.Background()); err != nil {
+			log.Printf("failed to flush spans: %v", err)
+		}
+	}()
 
 	// Enable tracing instrumentation on Redis client
 	redisAddr := getenv("REDIS_ADDR", "localhost:6379")

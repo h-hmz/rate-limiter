@@ -5,6 +5,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/redis/go-redis/v9"
@@ -43,5 +44,5 @@ func main() {
 
 	fmt.Println("listening on :8080 (redis:", redisAddr+")")
 	fmt.Println("  curl -H 'X-API-Key: user1' http://localhost:8080/api")
-	http.ListenAndServe(":8080", mux)
+	log.Fatal(http.ListenAndServe(":8080", mux))
 }

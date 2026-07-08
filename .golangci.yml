@@ -1,0 +1,19 @@
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # The fmt.Fprint family returns write errors that are almost never
+      # actionable (e.g. writing to an http.ResponseWriter after the client
+      # disconnected). Exempting them here keeps call sites free of `_, _ =`.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+  exclusions:
+    rules:
+      # Benchmarks and tests intentionally discard results when measuring
+      # throughput; testify's require/assert handle the errors that matter.
+      - path: _test\.go
+        linters:
+          - errcheck

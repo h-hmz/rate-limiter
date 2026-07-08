@@ -1,5 +1,7 @@
 # rate-limiter
 
+[![CI](https://github.com/h-hmz/rate-limiter/actions/workflows/ci.yml/badge.svg)](https://github.com/h-hmz/rate-limiter/actions/workflows/ci.yml)
+
 A production-oriented rate limiting library in Go, built to showcase clean abstraction design, concurrency safety, and storage portability.
 
 Two algorithms are implemented: **Fixed Window** and **Token Bucket**. Both backed by the same generic storage interface, with in-memory and Redis backends that are fully interchangeable.

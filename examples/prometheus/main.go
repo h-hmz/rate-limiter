@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -58,5 +59,5 @@ func main() {
 	fmt.Println("listening on :8080")
 	fmt.Println("  curl -H 'X-API-Key: user1' http://localhost:8080/api")
 	fmt.Println("  curl http://localhost:8080/metrics | grep ratelimit")
-	http.ListenAndServe(":8080", mux)
+	log.Fatal(http.ListenAndServe(":8080", mux))
 }
